@@ -10,13 +10,30 @@
   set_fact:
     microk8s_status: "{{ microk8s_status.stdout | from_yaml }}"
 
+# Supports both old syntax "size={{ registry_size }}", and new syntax "--size={{ registry_size }}"
+- name: Extract custom parameters (if they are defined) for addons
+  set_fact:
+    addon_parameters: >-
+      {% if microk8s_plugins[item.name] != True and microk8s_plugins[item.name] is string %}
+      {% if microk8s_plugins[item.name].startswith('--') %}
+      {{ microk8s_plugins[item.name] }}
+      {% else %}
+      :{{ microk8s_plugins[item.name] }}
+      {% endif %}
+      {% endif %}
+  loop: "{{ microk8s_status.addons }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - item.name in microk8s_plugins
+
 - name: enable addons
   become: yes
   loop: "{{ microk8s_status.addons }}"
   loop_control:
     label: "{{ item.name }}"
   command:
-    cmd: microk8s.enable {{ item.name }}{% if microk8s_plugins[item.name] != True %}:{{ microk8s_plugins[item.name] }}{% endif %}
+    cmd: microk8s.enable {{ item.name }}{{ addon_parameters[item.name] | default('') }}
   when:
     - item.status == 'disabled'
     - item.name in microk8s_plugins
